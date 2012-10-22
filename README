@@ -1,0 +1,82 @@
+UDP Heartbeat server (Question number : A2-6)
+
+Group members:
+		Rashmi Rajendra Joshi (USN-1PI10IS087)
+		Shrikrishna Holla (USN-1PI10IS100)
+
+
+a) Command line arguements used: 'port' and 'packetloss' 
+
+	The port number of the socket (port) and the packet-loss percentage (packetloss) are accepted via command line arguements. 
+	As UDP provides unreliable transport service, packets may get lost on the network. As the occurence of this situation is near to nil in a small network, we simulate its effect by accepting a command line argument for value of percentage packet loss to simulate. Say packetloss is 40. It means, every 40% of the time, we'll just be running an empty loop i.e., we will not reply to the client. (Client waits for 1second after which it realizes there's packet loss and sends the next request). So, we'll effectively be simulating 40% packet loss in the UDP Server.
+
+The modules used are: socket, random, argparse and datetime
+
+
+b) Description of the program:
+	
+Our program is a UDP Heartbeat server. The Heartbeat is used by the client to check whether the server is up. When the client sends a ping, the server, if up and running, replies with a suitable response notifying the client that it's alive. This process, of first receiving a ping and sending a response is similar to a heart beat. Heartbeats in this context, however, are UDP packets on the network. They keep track of how much time passed since each known computer sent its last heartbeat.
+	
+The line,
+
+		serverSocket = socket(AF_INET, SOCK_DGRAM)
+
+creates a server's socket called serverSocket. AF_INET indicates the address family(here, the underlying network is using IPv4) and SOCK_DGRAM indicates the socket type(here, UDP socket).
+	
+Then, we initialize the parser for accepting command line arguements 'port' and 'packetloss' and later assign the same. In case of the user not having passed an argument, instead of abruptly exiting the program, a default value of 12000 is assigned to port and 40 to packetloss. The port number cannot be less than 1024 or more than 65535 as all the ports before that range are reserved. And also, the packet loss percentage must be within the range of 0 and 100 for 'percentage' to make sense. If the value entered does not satisfies the conditions mentioned, it is taken care of by printing a suitable message and exiting the program. 
+
+If all the values passed are valid, the next step is to bind the server to a socket, which is done by the statement,
+
+		serverSocket.bind(('', args.port))
+
+In case the port is already being used up, an exception is raised to handle it and the user is prompted to try out with a different port
+
+Multiple clients may access the server at once, the server needs to keep track of all its clients. For this purpose, we build a dictionary that stores the IP addresses of the client computers as the key. The value is a list containing three fields -
+1: the number of packets received as value
+2: The lost packet count
+3: Timestamp of last received heartbeat
+Note that these values are held purely for logging and post-execution analysis. They hold no significant value otherwise
+
+The UDP Server runs in an infinite loop waiting for a client to send data.  When the client pings the server, it checks whether the client is pinging the server for the first time or not. If yes, this client is added onto the dictionary. The new packet received is updated onto the table and the delay in receiving the packet is calculated.
+
+The client sends a message as a string (the only two formats supported by the socket library for sending messages are string and buffer. We chose string because of its simplicity).The message consists of two parts-
+1: A sequence number generated in the client
+2: The time at which the packet was sent from the client
+These two are separated by the whitespace tab charater '\t'. In our server, the message is split using the string library's split() function and the resulting list of strings will contain the two messages, which are accessed as message_list[0] and message_list[1]
+
+A random number is generated for simulating packet loss condition. If there is to be a packet loss, it is simulated with no response for the packet. The code also checks for invalid data packet sent by the client which may affect the server by TypeError exception. A keyboard interrupt closes the server. On interrupt, the socket is safely closed for security reasons. And the status summary is printed in a tabular format.
+
+The response is sent as a message stating the difference between the times when the client sent the packet and when the server sent a response, and a report of the number of packets lost in between two successful responses
+
+This packet loss count is held in another dictionary, which maps the number of lost packets for every address
+
+A timeout of one minute has been set for the server to wait for a client ping. If no client pings the server for more than a minute, we report a message to whoever is handling the server about the inactivity and it is left to the person whether he wants to close the server or not.
+
+For line by line details, the program has been neatly commented wherever necessary
+
+Challenges
+----------
+1: First challenge was the limitation socket.socket.recvfrom() and sendto() introduced about having to encode the message as a string or a buffer type. Encoding was not a difficulty at all; it was the decoding. Luckily, python's datetime.datetime provides a function called strptime() which is the reverse of strftime(). While strftime() allows us to convert time into string by specifying datetime-type variables using format specifiers like %H,%S etc, strptime allows us to rewind the conversion - if we know the format of the datetime object encoded in the string, it will give us the exact datetime object corresponding to it.
+
+2: Second challenge was in the same message string received from the client. The problem required us to obtain BOTH sequence number and a timestamp. The group working on the client program came up with a nifty idea to solve this. They provided a separator for the two messages as a whitespace tab character '\t'. After this, it was a simple matter of splitting the message into two parts using str.split() standard library function which splits a string into a list of strings based on a token value
+
+3: Third challenge was handling multiple clients. While this is not a challenge if the server doesn't care about logging any data, it sure is something to ponder if we want to keep track of the statistics of pings / accesses to the server (most real world servers do). We would also need to keep a whole bunch of other data related to the client, like 'what is the IP address of the client?', 'How many times did it ping you?', 'When did it last ping you?', and just since we are *simulating* packet loss here, 'What is the packet loss the client experienced?'. We keep track of all these data in a dictionary structure with the address of the client as the key and a list containing all other statistics as value. We print all these data in a tabular format when the server is closed
+
+4: Then there was determining the response to be sent to the client. The question required us to also report lost packet count between two successful replies to the client. This couldn't be held in just a variable as multiple clients would be pinging the server simultaneously. So, we used another dictionary which held address as the key and lost packet count as value. We stitched together a message with both these data in a format that the client can directly print in its console
+
+5: We had made a few assumptions about the target client program. While another group was very helpful and collaborative, we felt that we could write a client program on our own too. This program was initially used only for testing purposes, but we are also submitting it with our server code to give an idea of the model of client for which we built our server
+
+6: We are taking two optional command line arguments, 'port' and 'packetloss'. Initially, we thought about using the getopt library as given in the skeleton code. But then we came to know about another library python provides, called 'argparse', which provides better help messages and type-checking capabilities compared to getopt. So we used argparse to parse and use command line arguments. If arguments are not specified, we take default values 12000 for port number and 40% for packet loss. In case we can't bind server to port 12000, we iterate further till we succeed
+
+7: Apart from this, we have taken care of many cases where exception could arise and have handled each kind of exception separately, wherever it made sense to print a custom error message for that exception. We realize the importance of handling exception in server as they are very much prone to attempts at cracking and a server should shield itself from breaking down in every possible scenario. This said, there could be cracks in our armoury. No code is 100% secure; but we have tried our best to reach as close to the 100% mark as we possibly can.
+
+Things we wanted to do, but couldn't
+-------------------------------------
+1: Load balancing - If there is a huge flow of client requests, our program just won't be able to handle it and most of the clients will then be timing out. We wanted to implement load balancing by starting a separate thread when the load on the server increased beyond tipping level. But the difficulties of implementation like determining that tipping point and conditionally starting a thread and directing traffic towards the thread deterred us from implementing it. Given more time, this is not an impossible-to-implement feature, though
+
+2: We wanted to log the statistics in a csv file for reference purposes. (We are sure almost all servers in the world do this). But one thing was that successive sessions had to append data to the log and there had to be a way to differentiate two sessions' logs. We had gone through the python csv module but needed time to understand it. Also, since this was just an additional feature not really relevant to this project, the idea was scrapped.
+
+3: Pokemon exception handling: It's a paradigm where every possible exception is accounted for and handled separately. We tried accounting for as many as we could think of, but we realize we might have missed many possibilities we haven't accounted for, where exceptions could arise.
+
+NOTE:
+In the question, there's a statement "If the Heartbeat packets are missing for some specified period of time, we can assume that the client application has stopped.". We hope it didn't mean that we have to *stop* the server when that happens. All along the program, we have tried to make sure the server doesn't halt if not absolutely necessary, and timeout for no client being up, according to us, should not really cause the server to halt.
